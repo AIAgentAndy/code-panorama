@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import { 
   ReactFlow, 
   Controls, 
@@ -14,7 +14,7 @@ import {
   useReactFlow,
   getNodesBounds
 } from '@xyflow/react';
-import { X } from 'lucide-react';
+import { ChevronsUp, ChevronsDown, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toPng } from 'html-to-image';
 import CustomNode from './CustomNode';
@@ -43,9 +43,18 @@ interface GraphViewerProps {
 const GraphViewerInner = forwardRef<GraphViewerRef, GraphViewerProps>(({ data, theme, activeModule, onManualDrill, maxDrillDepth, onSelectNode, onUpdateNodeDescription }, ref) => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [draftDescription, setDraftDescription] = useState('');
   const { getNodes } = useReactFlow();
+  const collapsibleNodeIds = useMemo(() => {
+    if (!data) return [] as string[];
+    const sources = new Set<string>();
+    data.edges.forEach((edge) => {
+      if (edge?.source) sources.add(edge.source);
+    });
+    return Array.from(sources);
+  }, [data]);
   const formatFileWithLine = (node: GraphNode) => {
     const rawLine = (node as unknown as { line?: unknown }).line;
     const lineNumber = typeof rawLine === 'number' ? rawLine : Number(rawLine);
@@ -111,10 +120,43 @@ const GraphViewerInner = forwardRef<GraphViewerRef, GraphViewerProps>(({ data, t
   }));
 
   useEffect(() => {
+    if (!data) {
+      setCollapsedNodeIds(new Set());
+      return;
+    }
+    const validIds = new Set(data.nodes.map((node) => node.id));
+    setCollapsedNodeIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [data]);
+
+  const handleToggleCollapse = useCallback((nodeId: string) => {
+    if (!nodeId) return;
+    setCollapsedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }, []);
+
+  const handleCollapseAll = useCallback(() => {
+    setCollapsedNodeIds(new Set(collapsibleNodeIds));
+  }, [collapsibleNodeIds]);
+
+  const handleExpandAll = useCallback(() => {
+    setCollapsedNodeIds(new Set());
+  }, []);
+
+  useEffect(() => {
     if (data) {
       const { nodes: layoutedNodes, edges: layoutedEdges } = transformGraphDataToFlow(data, activeModule, {
         onManualDrill,
         maxDrillDepth,
+        collapsedNodeIds,
+        onToggleCollapse: handleToggleCollapse,
       });
       // Pass theme to nodes via data
       const nodesWithTheme = layoutedNodes.map(node => ({
@@ -124,7 +166,7 @@ const GraphViewerInner = forwardRef<GraphViewerRef, GraphViewerProps>(({ data, t
       setNodes(nodesWithTheme);
       setEdges(layoutedEdges);
     }
-  }, [data, activeModule, setNodes, setEdges, theme, onManualDrill, maxDrillDepth]);
+  }, [data, activeModule, setNodes, setEdges, theme, onManualDrill, maxDrillDepth, collapsedNodeIds, handleToggleCollapse]);
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: theme === 'dark' ? '#57534e' : '#a8a29e' } } as Edge, eds)),
@@ -180,6 +222,40 @@ const GraphViewerInner = forwardRef<GraphViewerRef, GraphViewerProps>(({ data, t
   return (
     <div className={`w-full h-full flex flex-col ${theme === 'dark' ? 'bg-stone-900' : 'bg-stone-50'}`}>
       <div className="flex-1 relative overflow-hidden">
+        <div
+          className={`absolute top-3 right-3 z-20 inline-flex items-stretch overflow-hidden rounded-lg border shadow-sm ${
+            theme === 'dark'
+              ? 'border-stone-700 bg-stone-900/95'
+              : 'border-stone-300 bg-white/95'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={handleCollapseAll}
+            disabled={collapsibleNodeIds.length === 0}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              theme === 'dark'
+                ? 'text-stone-200 hover:bg-stone-800'
+                : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <ChevronsUp size={13} />
+            全部收起
+          </button>
+          <button
+            type="button"
+            onClick={handleExpandAll}
+            disabled={collapsedNodeIds.size === 0}
+            className={`inline-flex items-center gap-1.5 border-l px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              theme === 'dark'
+                ? 'border-stone-700 text-stone-200 hover:bg-stone-800'
+                : 'border-stone-300 text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <ChevronsDown size={13} />
+            全部展开
+          </button>
+        </div>
         <ReactFlow
             nodes={nodes}
             edges={edges}

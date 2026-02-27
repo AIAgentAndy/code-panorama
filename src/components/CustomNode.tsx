@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { PlusCircle, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 // Define the data structure stored in node.data
@@ -19,9 +19,13 @@ interface CustomNodeData extends Record<string, unknown> {
   isDimmed?: boolean;
   theme?: 'light' | 'dark';
   isLeaf?: boolean;
+  hasChildren?: boolean;
   canManualDrill?: boolean;
+  descendantCount?: number;
+  isCollapsed?: boolean;
   callStatus?: string;
   onManualDrill?: (nodeId: string) => void;
+  onToggleCollapse?: (nodeId: string) => void;
 }
 
 // Define the Node type using the data structure
@@ -37,6 +41,10 @@ const CustomNode = ({ data, id }: NodeProps<CustomNodeType>) => {
   const lineSuffix = Number.isFinite(parsedLine) && parsedLine > 0 ? `(L${Math.floor(parsedLine)})` : '';
   const fileName = data.file.split('/').pop() || data.file;
   const endpoint = data.httpRoute ? `${data.httpMethod ? `${data.httpMethod} ` : ''}${data.httpRoute}` : '';
+  const hasChildren = Boolean(data.hasChildren);
+  const isCollapsed = Boolean(data.isCollapsed);
+  const descendantCount = Number(data.descendantCount || 0);
+  const bottomCenterAnchorClass = "left-1/2 -translate-x-1/2";
   
   return (
     <div 
@@ -108,8 +116,8 @@ const CustomNode = ({ data, id }: NodeProps<CustomNodeType>) => {
         <button
           type="button"
           className={clsx(
-            "absolute right-0 top-1/2 translate-x-1/2 -translate-y-1/2 z-20 rounded-full p-0.5 nodrag nopan transition-colors shadow-sm cursor-pointer",
-            isDark ? "bg-stone-800/90 hover:bg-stone-700 text-[#d97706]" : "bg-white border border-stone-200 hover:bg-amber-50 text-[#d97706]"
+            `absolute ${bottomCenterAnchorClass} bottom-0 translate-y-1/2 z-20 rounded-full min-h-5 px-2 py-0.5 nodrag nopan transition-colors shadow-sm cursor-pointer text-[9px] font-medium whitespace-nowrap`,
+            isDark ? "bg-stone-800/95 hover:bg-stone-700 text-amber-300 border border-stone-600" : "bg-white border border-stone-200 hover:bg-amber-50 text-amber-700"
           )}
           title="手动下钻下一层"
           onClick={(e) => {
@@ -117,14 +125,33 @@ const CustomNode = ({ data, id }: NodeProps<CustomNodeType>) => {
             data.onManualDrill?.(id);
           }}
         >
-          <PlusCircle size={14} />
+          继续追踪
+        </button>
+      )}
+
+      {hasChildren && data.onToggleCollapse && (
+        <button
+          type="button"
+          className={clsx(
+            `absolute ${bottomCenterAnchorClass} bottom-0 translate-y-1/2 z-20 nodrag nopan transition-colors shadow-sm cursor-pointer`,
+            "rounded-full min-w-7 min-h-5 px-2 py-0.5 text-[9px] font-medium whitespace-nowrap flex items-center justify-center tabular-nums",
+            isDark ? "bg-stone-800 border border-stone-600 text-stone-200 hover:bg-stone-700" : "bg-white border border-stone-300 text-stone-700 hover:bg-stone-100"
+          )}
+          title={isCollapsed ? '展开子节点' : '收起子节点'}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggleCollapse?.(id);
+          }}
+        >
+          {isCollapsed ? (descendantCount > 99 ? '99+' : String(descendantCount)) : '−'}
         </button>
       )}
 
       <Handle 
         type="source" 
         position={Position.Bottom} 
-        className="w-2 h-2 !bg-stone-400 !-bottom-1 !left-1/2 !-translate-x-1/2" 
+        className="w-2 h-2 !bg-stone-400 !-bottom-1"
+        style={{ left: '50%', transform: 'translate(-50%, 50%)' }}
       />
     </div>
   );

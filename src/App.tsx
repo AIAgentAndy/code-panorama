@@ -879,6 +879,12 @@ function App() {
     }
   }, [deletingHistoryId, loadingHistoryId, refreshHistory]);
 
+  const handleReanalyzeModules = useCallback(async () => {
+    autoSaveStateRef.current.armed = true;
+    setLastExportFingerprint(null);
+    await reanalyzeModules();
+  }, [reanalyzeModules]);
+
   useEffect(() => {
     if (status !== 'complete') return;
     if (!autoSaveStateRef.current.armed) return;
@@ -938,24 +944,8 @@ function App() {
   ]);
 
   const handleBackToHome = useCallback(() => {
-    const hasAnalysisData = Boolean(projectPanoramaMarkdown || graphData?.nodes?.length || graphData?.edges?.length);
-    if (!hasAnalysisData) {
-      setView('home');
-      return;
-    }
-
-    const currentFingerprint = getCurrentExportFingerprint();
-    const needWarn = Boolean(currentFingerprint) && (
-      !lastExportFingerprint || lastExportFingerprint !== currentFingerprint
-    );
-
-    if (needWarn) {
-      const ok = window.confirm('你还没有导出最新工程文件，返回首页可能导致本次修改丢失。是否继续返回？');
-      if (!ok) return;
-    }
-
     setView('home');
-  }, [projectPanoramaMarkdown, graphData, getCurrentExportFingerprint, lastExportFingerprint]);
+  }, []);
 
   const allFiles = useMemo(() => graphData?.allFiles || [], [graphData?.allFiles]);
   const fileTree = useMemo(() => buildFileTree(allFiles), [allFiles]);
@@ -1975,7 +1965,7 @@ function App() {
                   {shouldShowReanalyzeModulesButton && (
                     <button
                       type="button"
-                      onClick={() => { void reanalyzeModules(); }}
+                      onClick={() => { void handleReanalyzeModules(); }}
                       disabled={isReanalyzingModules}
                       className={clsx(
                         'mt-3 w-full rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
