@@ -39,6 +39,7 @@ import {
 import { clsx } from 'clsx';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import Editor, { OnMount } from '@monaco-editor/react';
+import { useDevRefreshDiagnostics } from './hooks/useDevRefreshDiagnostics';
 
 const IMPORT_MODULE_COLORS = ['#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#84cc16'];
 const AGENT_LOG_SECTION_TITLE = '## 5. Agent 状态日志';
@@ -553,6 +554,22 @@ function App() {
     const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
     return historyItems.slice(start, start + HISTORY_PAGE_SIZE);
   }, [historyItems, historyPage]);
+  const {
+    enabled: devDiagnosticsEnabled,
+    append: appendDevDiagnostic,
+  } = useDevRefreshDiagnostics({
+    component: 'App',
+    getSnapshot: () => ({
+      view,
+      status,
+      homeSourceType,
+      hasGraphData: Boolean(graphData),
+      repoUrl: displayRepoUrl,
+      selectedFile,
+      selectedNodeId: selectedNode?.id || '',
+      historyCount: historyItems.length,
+    }),
+  });
 
   const refreshHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -643,6 +660,52 @@ function App() {
       setView('result');
     }
   }, [status, graphData]);
+
+  useEffect(() => {
+    if (!devDiagnosticsEnabled) return;
+    appendDevDiagnostic('view', `view changed to ${view}`, {
+      status,
+      hasGraphData: Boolean(graphData),
+      repoUrl: displayRepoUrl,
+    });
+  }, [appendDevDiagnostic, devDiagnosticsEnabled, displayRepoUrl, graphData, status, view]);
+
+  useEffect(() => {
+    if (!devDiagnosticsEnabled) return;
+    appendDevDiagnostic('status', `analysis status=${status}`, {
+      view,
+      hasGraphData: Boolean(graphData),
+      nodeCount: graphData?.nodes?.length || 0,
+      edgeCount: graphData?.edges?.length || 0,
+    });
+  }, [appendDevDiagnostic, devDiagnosticsEnabled, graphData, status, view]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateLlmDefaultsFromEnv = async () => {
+      try {
+        const response = await fetch('/api/settings/llm-defaults', { cache: 'no-store' });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (cancelled) return;
+        const envBaseUrl = String(payload?.llmBaseUrl || '').trim();
+        const envModel = String(payload?.llmModel || '').trim();
+        const envApiKey = String(payload?.llmApiKey || '').trim();
+        setSettings((prev) => ({
+          ...prev,
+          llmBaseUrl: prev.llmBaseUrl.trim() || envBaseUrl,
+          llmModel: prev.llmModel.trim() || envModel,
+          llmApiKey: prev.llmApiKey.trim() || envApiKey,
+        }));
+      } catch {
+        // ignore fetch errors
+      }
+    };
+    void hydrateLlmDefaultsFromEnv();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     try {

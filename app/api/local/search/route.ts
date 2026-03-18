@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
+import { toLocalApiErrorResponse } from "@/lib/localApiError";
+import { readJsonBody } from "@/lib/readJsonBody";
 import { collectProjectFiles, readTextContent, resolveLocalRoot } from "@/lib/localSource";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const { path, query } = await request.json();
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) {
-    return NextResponse.json({ error: "Invalid request", items: [] }, { status: 400 });
-  }
-
   try {
+    const { path, query } = await readJsonBody<{ path?: string; query?: string }>(request);
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) {
+      return NextResponse.json({ error: "Invalid request", items: [] }, { status: 400 });
+    }
     const root = await resolveLocalRoot(path);
     const { tree } = await collectProjectFiles(root, 6000);
     const items: Array<{ path: string }> = [];
@@ -29,10 +30,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ items });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "本地搜索失败", items: [] },
-      { status: 400 },
-    );
+    const response = toLocalApiErrorResponse(error, "本地搜索失败");
+    const payload = await response.json();
+    return NextResponse.json({ items: [], ...payload }, { status: response.status });
   }
 }
-

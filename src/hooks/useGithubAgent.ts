@@ -13,6 +13,8 @@ type AgentSettings = {
   maxChildCallsPerFunction?: number;
 };
 
+const LOCAL_ANALYSIS_UNAVAILABLE_MESSAGE = '本地分析仅限本地部署使用，当前无法使用。';
+
 type LlmCallNode = {
   name?: string;
   type?: string;
@@ -2635,6 +2637,11 @@ ${verifyContent}
         errorMessage = 'GitHub API 访问受限 (403)。可能触发频率限制，请提供 GitHub Token。';
       } else if (String(error.message || '').includes('403')) {
         errorMessage = 'GitHub API 访问受限 (403)。请提供 GitHub Token。';
+      } else if (sourceType === 'local' && error?.response?.data?.code === 'LOCAL_PATH_NOT_FOUND') {
+        errorMessage = LOCAL_ANALYSIS_UNAVAILABLE_MESSAGE;
+        if (typeof window !== 'undefined') {
+          window.alert(LOCAL_ANALYSIS_UNAVAILABLE_MESSAGE);
+        }
       }
 
       addLog(`错误: ${errorMessage}`, 'error');

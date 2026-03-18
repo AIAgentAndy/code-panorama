@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
+import { toLocalApiErrorResponse } from "@/lib/localApiError";
+import { readJsonBody } from "@/lib/readJsonBody";
 import { readTextContent, resolveLocalRoot } from "@/lib/localSource";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const { path, paths } = await request.json();
-  if (!Array.isArray(paths)) {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  }
-
   try {
+    const { path, paths } = await readJsonBody<{ path?: string; paths?: string[] }>(request);
+    if (!Array.isArray(paths)) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
     const root = await resolveLocalRoot(path);
     const contents: Record<string, string> = {};
     const errors: Record<string, string> = {};
@@ -27,10 +28,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ contents, errors });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "读取本地文件失败" },
-      { status: 400 },
-    );
+    return toLocalApiErrorResponse(error, "读取本地文件失败");
   }
 }
-
