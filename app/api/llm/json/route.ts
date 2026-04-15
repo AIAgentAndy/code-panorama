@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       },
     });
     return NextResponse.json(
-      { error: error?.message || "LLM request failed" },
+      { error: error?.message || "LLM request failed", details: error?.response?.data || null },
       { status: error?.status || 500 },
     );
   }

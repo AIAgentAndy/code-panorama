@@ -109,20 +109,53 @@ export function extractJsonFromText(text: string) {
 
   try {
     return tryParse(trimmed);
-  } catch {
+  } catch (err) {
     // Try fenced code block: ```json ... ```
     const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
     if (fenceMatch?.[1]) {
-      return tryParse(fenceMatch[1]);
+      try { return tryParse(fenceMatch[1]); } catch {}
     }
 
-    // Fallback: find first JSON object block
+    // Fallback: find first JSON object block by balancing braces
     const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace >= 0 && lastBrace > firstBrace) {
-      return tryParse(trimmed.slice(firstBrace, lastBrace + 1));
+    if (firstBrace >= 0) {
+      let depth = 0;
+      let lastBrace = -1;
+      for (let i = firstBrace; i < trimmed.length; i++) {
+        if (trimmed[i] === "{") depth++;
+        else if (trimmed[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            lastBrace = i;
+            break;
+          }
+        }
+      }
+      if (lastBrace > firstBrace) {
+        try { return tryParse(trimmed.slice(firstBrace, lastBrace + 1)); } catch {}
+      }
     }
 
-    throw new Error("Model did not return valid JSON.");
+    // Try array block balancing
+    const firstBracket = trimmed.indexOf("[");
+    if (firstBracket >= 0) {
+      let depth = 0;
+      let lastBracket = -1;
+      for (let i = firstBracket; i < trimmed.length; i++) {
+        if (trimmed[i] === "[") depth++;
+        else if (trimmed[i] === "]") {
+          depth--;
+          if (depth === 0) {
+            lastBracket = i;
+            break;
+          }
+        }
+      }
+      if (lastBracket > firstBracket) {
+        try { return tryParse(trimmed.slice(firstBracket, lastBracket + 1)); } catch {}
+      }
+    }
+
+    throw err; // rethrow original JSON.parse error if all fallbacks fail
   }
 }

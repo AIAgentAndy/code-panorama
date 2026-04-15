@@ -479,6 +479,8 @@ function App() {
   const theme = settings.theme;
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showLlmApiKey, setShowLlmApiKey] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [testConnectionResult, setTestConnectionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const settingsSnapshotRef = useRef<AppSettings | null>(null);
   const openSettings = () => {
     settingsSnapshotRef.current = { ...settings };
@@ -1164,7 +1166,10 @@ function App() {
         'fixed inset-0 z-[60] flex items-center justify-center p-4',
         theme === 'dark' ? 'bg-black/70' : 'bg-stone-900/45'
       )}
-      onClick={cancelSettings}
+      onClick={() => {
+        setTestConnectionResult(null);
+        cancelSettings();
+      }}
     >
       <div
         className={clsx(
@@ -1353,6 +1358,69 @@ function App() {
                   </button>
                 </div>
               </label>
+              
+              <div className="pt-2 border-t dark:border-stone-700/50 border-stone-200">
+                <button
+                  type="button"
+                  disabled={isTestingConnection}
+                  onClick={async () => {
+                    setTestConnectionResult(null);
+                    if (!settings.llmBaseUrl && !settings.llmModel && !settings.llmApiKey) {
+                      setTestConnectionResult({ type: 'error', message: '请先填写配置信息后测试。若期望测试服务端默认配置，请直接发起分析。' });
+                      return;
+                    }
+                    setIsTestingConnection(true);
+                    try {
+                      const res = await fetch('/api/llm/json', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          prompt: '请只返回以下 JSON: {"status": "ok"}',
+                          baseUrl: settings.llmBaseUrl.trim() || undefined,
+                          model: settings.llmModel.trim() || undefined,
+                          apiKey: settings.llmApiKey.trim() || undefined,
+                        })
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        throw data;
+                      }
+                      
+                      if (data?.data?.status === 'ok') {
+                        setTestConnectionResult({ type: 'success', message: '连接成功，API 配置有效！' });
+                      } else {
+                        setTestConnectionResult({ type: 'error', message: '连接成功，但返回数据未按格式返回。\\n\\n' + JSON.stringify(data?.data, null, 2) });
+                      }
+                    } catch (error: any) {
+                      const errMsg = error?.details?.message || error?.details || error?.error?.message || error?.error || error?.message || '未知错误';
+                      setTestConnectionResult({ type: 'error', message: '测试连接失败：\\n\\n' + (typeof errMsg === 'object' ? JSON.stringify(errMsg, null, 2) : errMsg) });
+                    } finally {
+                      setIsTestingConnection(false);
+                    }
+                  }}
+                  className={clsx(
+                    'w-full flex items-center justify-center gap-2 rounded-lg py-2 mt-2 text-xs font-medium transition-colors border',
+                    isTestingConnection 
+                      ? 'opacity-60 cursor-not-allowed border-transparent bg-stone-100 text-stone-400 dark:bg-stone-800 dark:text-stone-500'
+                      : theme === 'dark'
+                        ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                        : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  )}
+                >
+                  {isTestingConnection ? <Network size={14} className="animate-spin" /> : <Network size={14} />}
+                  {isTestingConnection ? '测试中...' : '测试连接'}
+                </button>
+                {testConnectionResult && (
+                  <div className={clsx(
+                    'mt-3 p-3 rounded-lg text-xs break-all whitespace-pre-wrap max-h-40 overflow-y-auto scrollbar-custom',
+                    testConnectionResult.type === 'success' 
+                      ? (theme === 'dark' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-green-50 text-green-700 border border-green-200')
+                      : (theme === 'dark' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-red-50 text-red-700 border border-red-200')
+                  )}>
+                    {testConnectionResult.message}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
