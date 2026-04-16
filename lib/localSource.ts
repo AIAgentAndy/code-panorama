@@ -126,3 +126,25 @@ export async function readTextContent(root: string, relativePath: string, maxByt
   return fs.readFile(abs, "utf-8");
 }
 
+export async function writeDocFile(root: string, moduleName: string, relativePath: string, content: string) {
+  const rootBasename = path.basename(root);
+  const docDirName = `${rootBasename}-doc`;
+  
+  const docRoot = path.resolve(root, docDirName);
+  const cleanModuleName = String(moduleName || "UnknownModule").replace(/^\.?\//, "");
+  const cleanRelativePath = String(relativePath || "unknown_file").replace(/^\.?\//, "");
+  
+  const finalFilePath = path.resolve(docRoot, cleanModuleName, `${cleanRelativePath}.md`);
+  const docRootWithSep = docRoot.endsWith(path.sep) ? docRoot : `${docRoot}${path.sep}`;
+  
+  if (!finalFilePath.startsWith(docRootWithSep)) {
+    throw new Error(`非法的文件写入路径: ${relativePath}`);
+  }
+  
+  const parentDir = path.dirname(finalFilePath);
+  await fs.mkdir(parentDir, { recursive: true });
+  await fs.writeFile(finalFilePath, content, "utf-8");
+  
+  return finalFilePath;
+}
+

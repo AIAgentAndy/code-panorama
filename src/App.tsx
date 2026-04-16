@@ -6,6 +6,7 @@ import { LocalPathInput } from './components/LocalPathInput';
 import { AgentLog } from './components/AgentLog';
 import { GraphViewer, GraphViewerRef } from './components/GraphViewer';
 import { useGithubAgent } from './hooks/useGithubAgent';
+import { useDocGenerator } from './hooks/useDocGenerator';
 import { GraphData, GraphNode, LogEntry, AiUsageStats } from './types';
 import {
   Code2,
@@ -499,6 +500,7 @@ function App() {
     setShowLlmApiKey(false);
     setIsSettingsOpen(false);
   };
+
   const {
     status,
     logs,
@@ -527,6 +529,19 @@ function App() {
     maxDrillDepth: settings.maxDrillDepth,
     maxChildCallsPerFunction: settings.maxChildCallsPerFunction,
   });
+
+  const docGenProjectSummary = projectPanoramaMarkdown 
+    ? (parseProjectPanoramaMarkdown(projectPanoramaMarkdown)?.project?.summary || '') 
+    : '无项目概要';
+
+  const docGen = useDocGenerator({
+    llmBaseUrl: settings.llmBaseUrl,
+    llmModel: settings.llmModel,
+    llmApiKey: settings.llmApiKey,
+    repoUrl: repoUrl,
+    projectSummary: docGenProjectSummary
+  });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const graphViewerRef = useRef<GraphViewerRef>(null);
   const sourceEditorRef = useRef<any>(null);
@@ -2279,6 +2294,28 @@ function App() {
                       <Download size={16} />
                       导出工程文件
                     </button>
+                    {(repoUrl && !repoUrl.startsWith('http')) && (
+                      <button
+                        onClick={() => {
+                          if (!graphData?.allFiles || graphData.allFiles.length === 0) {
+                            alert('当前没有可供生成的代码文件。您可以先开始分析工程。');
+                            return;
+                          }
+                          docGen.startGeneration(graphData.allFiles);
+                        }}
+                        disabled={!graphData?.allFiles || graphData.allFiles.length === 0}
+                        className={clsx(
+                            'flex items-center gap-2 px-3 py-1.5 text-sm font-medium border rounded-lg transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed',
+                            theme === 'dark'
+                              ? 'text-amber-300 bg-amber-900/30 border-amber-800 hover:bg-amber-800/50 hover:text-white hover:border-amber-700 hover:shadow-md'
+                              : 'text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100 hover:text-amber-900'
+                        )}
+                      >
+                        <FileText size={16} />
+                        批量生成详细设计文档
+                      </button>
+                    )}
+
                     <button
                       onClick={handleExportImage}
                       disabled={isExportingImage}
@@ -2547,6 +2584,95 @@ function App() {
       )}
 
       {settingsModal}
+
+      {docGen.status !== 'idle' && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div className={clsx('w-[800px] max-h-[85vh] rounded-2xl border flex flex-col shadow-2xl', theme === 'dark' ? 'border-stone-700 bg-stone-900' : 'border-stone-200 bg-white')}>
+            <div className="px-6 py-4 border-b dark:border-stone-800 flex justify-between items-center bg-stone-50 dark:bg-stone-900/50 rounded-t-2xl shrink-0">
+              <h2 className="text-sm font-bold flex items-center gap-2 dark:text-stone-200 text-stone-800">
+                 <FileText className="text-amber-500" size={18} />
+                 批量生成详细设计文档 (本地写入)
+              </h2>
+              {docGen.status === 'success' || docGen.status === 'error' ? (
+                <button onClick={docGen.reset} className="text-stone-400 hover:text-stone-600"><X size={18} /></button>
+              ) : (
+                <button onClick={docGen.stopGeneration} className="text-red-500 hover:bg-red-500/10 px-3 py-1 text-xs rounded border border-red-500/20">强制终止</button>
+              )}
+            </div>
+            
+            <div className="p-6 flex flex-col gap-4 overflow-y-auto w-full scrollbar-custom flex-1">
+              {docGen.status === 'classifying' && <div className="text-sm text-stone-500 animate-pulse bg-stone-50 dark:bg-stone-800/50 p-4 rounded-lg flex items-center gap-3"><Clock3 size={16} className="text-amber-500" />👉 第一步：AI 正在识别系统模块并划分布局...耐心等待 (10~20秒)</div>}
+              {docGen.status === 'generating' && (
+                 <div className="text-sm bg-stone-50 dark:bg-stone-800/50 p-4 rounded-lg dark:text-stone-300 border border-stone-200 dark:border-stone-700">
+                   <div className="font-bold flex items-center gap-2 text-amber-600 dark:text-amber-500 mb-2"><Network size={16} /> 👉 第二步：并发深度解析与写盘</div>
+                   <div className="mb-3">进度: <span className="font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{docGen.tasks.filter(t => t.status === 'done').length}</span> / {docGen.tasks.length} {docGen.globalError && <span className="text-red-500 ml-2">({docGen.globalError})</span>}</div>
+                   <div className="h-2.5 w-full bg-stone-200 dark:bg-stone-900 rounded-full overflow-hidden shadow-inner relative">
+                     <div className="h-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-300" style={{ width: `${(docGen.tasks.filter(t => t.status === 'done').length / docGen.tasks.length) * 100}%` }}></div>
+                   </div>
+                 </div>
+              )}
+              
+              {docGen.status === 'error' && (
+                 <div className="p-4 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 rounded-lg text-sm border border-red-200 dark:border-red-900/50 flex items-start gap-3 shadow-sm">
+                   <X size={18} className="mt-0.5 shrink-0" />
+                   <div>
+                     <div className="font-bold mb-1">生成任务异常停止或中断</div>
+                     <div className="text-xs opacity-80">{docGen.globalError}</div>
+                   </div>
+                 </div>
+              )}
+              
+              {docGen.status === 'success' && (
+                 <div className="p-4 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 rounded-lg text-sm border border-emerald-200 dark:border-emerald-900/50 shadow-sm">
+                   🎉 生成完成！请在本地项目根目录下的 <code className="bg-emerald-100 dark:bg-emerald-800/40 px-1.5 py-0.5 rounded mx-1">{repoUrl ? repoUrl.split('/').pop() : ''}-doc</code> 文件夹内查看所有相关的 Markdown 设计文档。
+                 </div>
+              )}
+
+              {docGen.tasks.length > 0 && (
+                 <div className="mt-2 border dark:border-stone-700 rounded-lg overflow-hidden shadow-sm bg-white dark:bg-stone-900/50">
+                   <table className="w-full text-left text-xs">
+                     <thead className="bg-stone-100 dark:bg-stone-800/80 text-stone-500 dark:text-stone-400 border-b dark:border-stone-700">
+                       <tr>
+                         <th className="px-4 py-3 font-medium w-24">状态</th>
+                         <th className="px-4 py-3 font-medium w-32">分类模块</th>
+                         <th className="px-4 py-3 font-medium">源代码文件</th>
+                         <th className="px-4 py-3 font-medium">详情</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y dark:divide-stone-800 dark:text-stone-300">
+                       {docGen.tasks.map(t => (
+                         <tr key={t.id} className={clsx(
+                           'transition-colors',
+                           t.status === 'failed' ? 'bg-red-50/50 dark:bg-red-900/10' : 
+                           t.status === 'loading' ? 'bg-amber-50/30 dark:bg-amber-900/10' : 
+                           'hover:bg-stone-50 dark:hover:bg-stone-800/50'
+                         )}>
+                           <td className="px-4 py-2.5">
+                             {t.status === 'pending' && <span className="text-stone-400 flex items-center gap-1.5"><Clock3 size={12} /> 待执行</span>}
+                             {t.status === 'loading' && <span className="text-amber-500 font-bold flex items-center gap-1.5"><Network size={12} className="animate-spin" /> 写入中</span>}
+                             {t.status === 'done' && <span className="text-emerald-500 flex items-center gap-1.5"><Target size={12} /> 已生成</span>}
+                             {t.status === 'failed' && <span className="text-red-500 flex items-center gap-1.5"><X size={12} /> 失败</span>}
+                           </td>
+                           <td className="px-4 py-2.5">
+                             <span className={clsx(
+                               'px-2 py-0.5 rounded text-[10px] font-medium border',
+                               theme === 'dark' ? 'bg-stone-800 border-stone-700 text-stone-300' : 'bg-stone-100 border-stone-200 text-stone-600'
+                             )}>
+                               {t.module}
+                             </span>
+                           </td>
+                           <td className="px-4 py-2.5 font-mono truncate max-w-[250px]" title={t.file}>{t.file}</td>
+                           <td className="px-4 py-2.5 text-[10px] text-stone-500 truncate max-w-[150px]" title={t.error}>{t.error || '-'}</td>
+                         </tr>
+                       ))}
+                     </tbody>
+                   </table>
+                 </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
